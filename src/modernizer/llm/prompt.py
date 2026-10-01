@@ -34,28 +34,24 @@ def build_user_prompt(state: PipelineState) -> str:
     parsed = state["parsed"]
     analysis = state["analysis"]
 
-    parameters = "\n".join(
-        f"- {p['name']} ({p['mode']}): {p['type']}" for p in parsed["parameters"]
-    ) or "- nenhum"
-    variables = "\n".join(
-        f"- {v['name']}: {v['type']}" for v in parsed["variables"]
-    ) or "- nenhuma"
-    constructs = ", ".join(
-        f"{name}={count}" for name, count in analysis["constructs"].items()
+    parameters = (
+        "\n".join(f"- {p['name']} ({p['mode']}): {p['type']}" for p in parsed["parameters"])
+        or "- nenhum"
     )
-    risks = "\n".join(
-        f"- [{r['severity']}] {r['code']}: {r['guidance']}" for r in analysis["risks"]
-    ) or "- nenhum"
+    variables = "\n".join(f"- {v['name']}: {v['type']}" for v in parsed["variables"]) or "- nenhuma"
+    constructs = ", ".join(f"{name}={count}" for name, count in analysis["constructs"].items())
+    risks = (
+        "\n".join(f"- [{r['severity']}] {r['code']}: {r['guidance']}" for r in analysis["risks"])
+        or "- nenhum"
+    )
 
     sections = [
-        f"## Rotina\n{parsed['kind']} {parsed['name']}\n"
-        f"Retorno: {parsed['returns'] or 'nenhum'}",
+        f"## Rotina\n{parsed['kind']} {parsed['name']}\nRetorno: {parsed['returns'] or 'nenhum'}",
         f"## Parametros\n{parameters}",
         f"## Variaveis locais\n{variables}",
         f"## Construcoes encontradas\n{constructs}",
         f"## Tabelas referenciadas\n{', '.join(analysis['tables']) or 'nenhuma'}",
-        f"## Funcoes do banco chamadas\n"
-        f"{', '.join(analysis['function_calls']) or 'nenhuma'}",
+        f"## Funcoes do banco chamadas\n{', '.join(analysis['function_calls']) or 'nenhuma'}",
         f"## Riscos de traducao e orientacoes\n{risks}",
     ]
 

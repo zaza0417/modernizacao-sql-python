@@ -18,9 +18,7 @@ PROCEDURES = [
 
 
 def modernize(source_code: str, schema_ddl: str) -> dict:
-    payload = json.dumps(
-        {"source_code": source_code, "schema_ddl": schema_ddl}
-    ).encode("utf-8")
+    payload = json.dumps({"source_code": source_code, "schema_ddl": schema_ddl}).encode("utf-8")
     request = urllib.request.Request(
         API_URL, data=payload, headers={"Content-Type": "application/json"}
     )
@@ -40,9 +38,7 @@ def main() -> None:
             print(f"{name}: falha - {result['report']['errors']}")
             continue
         if result["generated_code"]:
-            (RESULTS / f"{name}.py").write_text(
-                result["generated_code"], encoding="utf-8"
-            )
+            (RESULTS / f"{name}.py").write_text(result["generated_code"], encoding="utf-8")
         report = {"id": result["id"], "status": result["status"], **result["report"]}
         (RESULTS / f"{name}.report.json").write_text(
             json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"

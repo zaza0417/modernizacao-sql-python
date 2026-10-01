@@ -42,9 +42,7 @@ def _check_syntax(code: str) -> tuple[ast.Module | None, list[str]]:
 def _check_structure(tree: ast.Module, name: str) -> list[str]:
     errors: list[str] = []
     if ast.get_docstring(tree) is None:
-        errors.append(
-            "estrutura: o modulo nao tem docstring na primeira linha, antes dos imports"
-        )
+        errors.append("estrutura: o modulo nao tem docstring na primeira linha, antes dos imports")
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     main = functions.get(name)
     if main is None:
@@ -57,9 +55,18 @@ def _check_structure(tree: ast.Module, name: str) -> list[str]:
 def _check_lint(code: str) -> list[str]:
     result = subprocess.run(
         [
-            sys.executable, "-m", "ruff", "check", "--no-cache",
-            "--select", "E9,F", "--output-format", "json",
-            "--stdin-filename", "generated.py", "-",
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--select",
+            "E9,F",
+            "--output-format",
+            "json",
+            "--stdin-filename",
+            "generated.py",
+            "-",
         ],
         input=code,
         capture_output=True,
@@ -70,7 +77,4 @@ def _check_lint(code: str) -> list[str]:
         findings = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
         return [f"lint: ruff falhou: {result.stderr.strip()}"]
-    return [
-        f"lint: {f.get('code')} linha {f['location']['row']}: {f['message']}"
-        for f in findings
-    ]
+    return [f"lint: {f.get('code')} linha {f['location']['row']}: {f['message']}" for f in findings]

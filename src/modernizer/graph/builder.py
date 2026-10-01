@@ -4,8 +4,8 @@ from modernizer.graph.state import PipelineState
 from modernizer.nodes.analyze import analyze_node
 from modernizer.nodes.generate import generate_node
 from modernizer.nodes.parse import parse_node
-from modernizer.nodes.validate import validate_node
 from modernizer.nodes.persist import persist_node
+from modernizer.nodes.validate import validate_node
 
 MAX_ATTEMPTS = 3
 
@@ -36,7 +36,9 @@ def build_graph():
     builder.add_edge(START, "parse")
     builder.add_conditional_edges("parse", _continue_or_stop("analyze"), ["analyze", "persist"])
     builder.add_conditional_edges("analyze", _continue_or_stop("generate"), ["generate", "persist"])
-    builder.add_conditional_edges("generate", _continue_or_stop("validate"), ["validate", "persist"])
+    builder.add_conditional_edges(
+        "generate", _continue_or_stop("validate"), ["validate", "persist"]
+    )
     builder.add_conditional_edges("validate", _after_validate, ["generate", "persist"])
     builder.add_edge("persist", END)
 

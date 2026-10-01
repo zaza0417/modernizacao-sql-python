@@ -4,7 +4,7 @@ import sqlglot
 from pglast import parse_plpgsql
 from sqlglot import exp
 
-from modernizer.dialects.base import Parameter, ParsedProcedure, Variable, Analysis, Risk
+from modernizer.dialects.base import Analysis, Parameter, ParsedProcedure, Risk, Variable
 
 
 class PostgresDialect:
@@ -15,7 +15,7 @@ class PostgresDialect:
         if not isinstance(tree, exp.Create):
             raise ValueError("Esperado CREATE FUNCTION ou CREATE PROCEDURE")
 
-        udf = tree.this                     # UserDefinedFunction
+        udf = tree.this  # UserDefinedFunction
         props = tree.args.get("properties")
         prop_list = props.expressions if props else []
 
@@ -36,7 +36,7 @@ class PostgresDialect:
     def _parameter(col: exp.ColumnDef) -> Parameter:
         io = col.find(exp.InOutColumnConstraint)
         if io is None:
-            mode = "IN"                     # sem modo explícito = IN
+            mode = "IN"  # sem modo explícito = IN
         elif io.args.get("input_") and io.args.get("output"):
             mode = "INOUT"
         elif io.args.get("output"):
@@ -119,11 +119,11 @@ class PostgresDialect:
                     continue
                 ctes = {c.alias for c in tree.find_all(exp.CTE)}
                 tables.update(
-                    t.name for t in tree.find_all(exp.Table)
-                    if t.name and t.name not in ctes
+                    t.name for t in tree.find_all(exp.Table) if t.name and t.name not in ctes
                 )
                 functions.update(
-                    f.name for f in tree.find_all(exp.Anonymous)
+                    f.name
+                    for f in tree.find_all(exp.Anonymous)
                     if not f.name.lower().startswith(("json_", "jsonb_"))
                 )
                 break
@@ -140,55 +140,99 @@ class PostgresDialect:
         declared = parsed["parameters"] + parsed["variables"]
         types = " ".join(d["type"] for d in declared).upper()
         types += " " + (parsed["returns"] or "").upper()
-        writes = sum(
-            q.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
-            for q in queries
-        )
+        writes = sum(q.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")) for q in queries)
 
         rules = [
-            (constructs["fetch"] > 0, "CURSOR_LOOP", "alta",
-             "Cursor percorrido linha a linha gera N+1 queries. Prefira uma "
-             "operacao set-based ou carga em lote, preservando a semantica."        
-             " Nao execute consultas dentro do laco: carregue os dados de "
-             "apoio em uma unica query antes dele."),
-            (constructs["exception_block"] > 0, "EXCEPTION_BLOCK", "alta",
-             "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e "
-             "desfeito antes do handler. Escritas no handler seguidas de RAISE "
-             "tambem sao desfeitas pela transacao externa. Todo RAISE EXCEPTION "
-             "dentro do bloco, inclusive validacoes de parametros, e capturado "
-             "pelo handler WHEN OTHERS: coloque essas validacoes dentro do try."           
-             " O corpo do bloco fica dentro de um `with conn.transaction()` "
-             "aninhado proprio, com o try/except por fora dele, para que o "
-             "handler consiga usar a conexao depois de um erro de banco."),
-            ("FOR UPDATE" in sql_text, "ROW_LOCK", "alta",
-             "SELECT ... FOR UPDATE bloqueia linhas. Leitura e escrita precisam "
-             "ocorrer na mesma transacao e na mesma conexao."),
-            (writes >= 2, "MULTI_WRITE", "alta",
-             "Multiplas escritas devem ficar em uma unica transacao atomica."),
-            (any(p["mode"] != "IN" for p in parsed["parameters"]), "OUT_PARAMS", "media",
-             "Parametros OUT nao existem em Python: devolva-os no retorno "
-             "(dataclass)."),
-            (constructs["return_query"] > 0, "SET_RETURNING", "media",
-             "RETURN QUERY devolve varias linhas: retorne uma lista de dataclasses."),
-            ("WITH RECURSIVE" in sql_text, "RECURSIVE_CTE", "media",
-             "CTE recursiva: mantenha em SQL em vez de reescrever com loop Python."),
-            (bool(functions), "NESTED_CALL", "media",
-             f"Chama outras funcoes do banco: {', '.join(functions)}. Trate "
-             "como dependencia explicita."),
-            ("NUMERIC" in types or "DECIMAL" in types, "DECIMAL", "media",
-             "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada "
-             "atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique "
-             "quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."),
-            (constructs["raise"] > 0, "RAISE", "media",
-             "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."),
-            (constructs["getdiag"] > 0, "ROW_COUNT", "baixa",
-             "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount."),
-            ("JSONB" in sql_text, "JSONB", "baixa",
-             "JSONB: mantenha jsonb_build_object no SQL e passe os valores como "
-             "parametros com cast explicito em cada um (%(x)s::bigint, "
-             "::numeric, ::text, ::date), pois o banco nao infere o tipo de "
-             "parametros nessa funcao. Nao use Jsonb() com Decimal nem converta "
-             "para str ou float."),
+            (
+                constructs["fetch"] > 0,
+                "CURSOR_LOOP",
+                "alta",
+                "Cursor percorrido linha a linha gera N+1 queries. Prefira uma "
+                "operacao set-based ou carga em lote, preservando a semantica."
+                " Nao execute consultas dentro do laco: carregue os dados de "
+                "apoio em uma unica query antes dele.",
+            ),
+            (
+                constructs["exception_block"] > 0,
+                "EXCEPTION_BLOCK",
+                "alta",
+                "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e "
+                "desfeito antes do handler. Escritas no handler seguidas de RAISE "
+                "tambem sao desfeitas pela transacao externa. Todo RAISE EXCEPTION "
+                "dentro do bloco, inclusive validacoes de parametros, e capturado "
+                "pelo handler WHEN OTHERS: coloque essas validacoes dentro do try."
+                " O corpo do bloco fica dentro de um `with conn.transaction()` "
+                "aninhado proprio, com o try/except por fora dele, para que o "
+                "handler consiga usar a conexao depois de um erro de banco.",
+            ),
+            (
+                "FOR UPDATE" in sql_text,
+                "ROW_LOCK",
+                "alta",
+                "SELECT ... FOR UPDATE bloqueia linhas. Leitura e escrita precisam "
+                "ocorrer na mesma transacao e na mesma conexao.",
+            ),
+            (
+                writes >= 2,
+                "MULTI_WRITE",
+                "alta",
+                "Multiplas escritas devem ficar em uma unica transacao atomica.",
+            ),
+            (
+                any(p["mode"] != "IN" for p in parsed["parameters"]),
+                "OUT_PARAMS",
+                "media",
+                "Parametros OUT nao existem em Python: devolva-os no retorno (dataclass).",
+            ),
+            (
+                constructs["return_query"] > 0,
+                "SET_RETURNING",
+                "media",
+                "RETURN QUERY devolve varias linhas: retorne uma lista de dataclasses.",
+            ),
+            (
+                "WITH RECURSIVE" in sql_text,
+                "RECURSIVE_CTE",
+                "media",
+                "CTE recursiva: mantenha em SQL em vez de reescrever com loop Python.",
+            ),
+            (
+                bool(functions),
+                "NESTED_CALL",
+                "media",
+                f"Chama outras funcoes do banco: {', '.join(functions)}. Trate "
+                "como dependencia explicita.",
+            ),
+            (
+                "NUMERIC" in types or "DECIMAL" in types,
+                "DECIMAL",
+                "media",
+                "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada "
+                "atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique "
+                "quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final.",
+            ),
+            (
+                constructs["raise"] > 0,
+                "RAISE",
+                "media",
+                "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging.",
+            ),
+            (
+                constructs["getdiag"] > 0,
+                "ROW_COUNT",
+                "baixa",
+                "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount.",
+            ),
+            (
+                "JSONB" in sql_text,
+                "JSONB",
+                "baixa",
+                "JSONB: mantenha jsonb_build_object no SQL e passe os valores como "
+                "parametros com cast explicito em cada um (%(x)s::bigint, "
+                "::numeric, ::text, ::date), pois o banco nao infere o tipo de "
+                "parametros nessa funcao. Nao use Jsonb() com Decimal nem converta "
+                "para str ou float.",
+            ),
         ]
         return [
             {"code": code, "severity": severity, "guidance": guidance}

@@ -39,9 +39,7 @@ def check_execution(code: str, parsed: ParsedProcedure) -> list[str] | None:
 
     name = parsed["name"]
     function = namespace[name]
-    args = [
-        _sample_value(p["type"]) for p in parsed["parameters"] if p["mode"] != "OUT"
-    ]
+    args = [_sample_value(p["type"]) for p in parsed["parameters"] if p["mode"] != "OUT"]
     own_exceptions = tuple(
         value
         for value in namespace.values()
@@ -60,7 +58,5 @@ def check_execution(code: str, parsed: ParsedProcedure) -> list[str] | None:
         return []
     except Exception as exc:
         detail = str(exc).splitlines()[0] if str(exc) else ""
-        return [
-            f"execucao: {type(exc).__name__} ao chamar {name}{tuple(args)}: {detail}"
-        ]
+        return [f"execucao: {type(exc).__name__} ao chamar {name}{tuple(args)}: {detail}"]
     return []

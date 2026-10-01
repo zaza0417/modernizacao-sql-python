@@ -156,9 +156,21 @@ com fuso e índice para consultas das execuções recentes.
 - Apenas PL/pgSQL está implementado.
 - No Windows, o servidor do LangGraph precisa do pacote `colorama` (já incluído).
 
+
+## Qualidade
+
+```bash
+uv run pytest          # 29 testes, sem chave de LLM nem banco
+uv run ruff check .    # lint
+```
+
+Os testes do grafo usam um provedor de LLM falso, com respostas combinadas, e
+substituem a gravação no banco. Isso permite testar o caminho feliz, a nova
+tentativa (conferindo que os erros voltam no prompt), a desistência após 3
+tentativas e a persistência de falhas, de forma determinística.
+
 ## Com mais tempo
 
 - Métrica automática de equivalência: executar original e gerado com os mesmos
   dados e comparar o estado do banco e o retorno.
-- Testes com pytest e lint no projeto.
 - Observabilidade com Langfuse.

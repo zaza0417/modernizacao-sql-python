@@ -24,9 +24,7 @@ class GeminiProvider:
     def __init__(self, models: str | None = None) -> None:
         raw = models or os.getenv("MODERNIZER_MODEL", _DEFAULT_MODELS)
         self.models = [m.strip() for m in raw.split(",") if m.strip()]
-        self._client = genai.Client(
-            http_options=types.HttpOptions(timeout=_TIMEOUT_MS)
-        )
+        self._client = genai.Client(http_options=types.HttpOptions(timeout=_TIMEOUT_MS))
 
     def generate(self, system: str, user: str) -> GenerationResult:
         config = types.GenerateContentConfig(
@@ -53,7 +51,7 @@ class GeminiProvider:
                     last_error = exc
                     continue
                 return self._to_result(response, model)
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
 
         raise RuntimeError(f"Todos os modelos falharam: {last_error}")
 
