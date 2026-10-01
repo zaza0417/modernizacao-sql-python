@@ -1,0 +1,115 @@
+{
+  "id": "03eeb9d7-cf90-4ac8-9e4d-c2036b9351f9",
+  "status": "sucesso",
+  "dialect": "postgres",
+  "parsing": {
+    "name": "sp_transferir_entre_contas",
+    "kind": "PROCEDURE",
+    "language": "plpgsql",
+    "parameters": [
+      {
+        "name": "p_conta_origem",
+        "mode": "IN",
+        "type": "BIGINT"
+      },
+      {
+        "name": "p_conta_destino",
+        "mode": "IN",
+        "type": "BIGINT"
+      },
+      {
+        "name": "p_valor",
+        "mode": "IN",
+        "type": "DECIMAL(18, 2)"
+      }
+    ],
+    "returns": null,
+    "variables": [
+      {
+        "name": "v_saldo_origem",
+        "type": "numeric"
+      },
+      {
+        "name": "v_status_origem",
+        "type": "varchar"
+      },
+      {
+        "name": "v_status_destino",
+        "type": "varchar"
+      }
+    ]
+  },
+  "analysis": {
+    "constructs": {
+      "block": 2,
+      "if": 5,
+      "raise": 6,
+      "execsql": 7,
+      "exception_block": 1,
+      "return": 1
+    },
+    "tables": [
+      "contas",
+      "log_auditoria",
+      "transacoes"
+    ],
+    "function_calls": [],
+    "risks": [
+      {
+        "code": "EXCEPTION_BLOCK",
+        "severity": "alta",
+        "guidance": "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e desfeito antes do handler. Escritas no handler seguidas de RAISE tambem sao desfeitas pela transacao externa. Todo RAISE EXCEPTION dentro do bloco, inclusive validacoes de parametros, e capturado pelo handler WHEN OTHERS: coloque essas validacoes dentro do try. O corpo do bloco fica dentro de um `with conn.transaction()` aninhado proprio, com o try/except por fora dele, para que o handler consiga usar a conexao depois de um erro de banco."
+      },
+      {
+        "code": "ROW_LOCK",
+        "severity": "alta",
+        "guidance": "SELECT ... FOR UPDATE bloqueia linhas. Leitura e escrita precisam ocorrer na mesma transacao e na mesma conexao."
+      },
+      {
+        "code": "MULTI_WRITE",
+        "severity": "alta",
+        "guidance": "Multiplas escritas devem ficar em uma unica transacao atomica."
+      },
+      {
+        "code": "DECIMAL",
+        "severity": "media",
+        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."
+      },
+      {
+        "code": "RAISE",
+        "severity": "media",
+        "guidance": "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."
+      },
+      {
+        "code": "JSONB",
+        "severity": "baixa",
+        "guidance": "JSONB: mantenha jsonb_build_object no SQL e passe os valores como parametros com cast explicito em cada um (%(x)s::bigint, ::numeric, ::text, ::date), pois o banco nao infere o tipo de parametros nessa funcao. Nao use Jsonb() com Decimal nem converta para str ou float."
+      }
+    ]
+  },
+  "generation": {
+    "decisions": [
+      "Created custom exception 'TransferenciaError' to map RAISE EXCEPTION.",
+      "Used decimal.Decimal with .quantize(Decimal('0.01'), ROUND_HALF_UP) to strictly emulate NUMERIC(18,2) behavior.",
+      "Wrapped the logic in 'with conn.transaction()' to create a savepoint, mimicking the PL/pgSQL EXCEPTION block scope.",
+      "Placed the try/except outside the nested transaction so the connection remains usable in the exception handler after a database rollback of the sub-transaction.",
+      "Used jsonb_build_object directly in SQL with explicit casts (::bigint, ::numeric, ::text) as required for JSON construction with parameters.",
+      "Used str(e) to capture the error message, equivalent to SQLERRM in PL/pgSQL.",
+      "Used SELECT ... FOR UPDATE to maintain row locks during the balance verification and subsequent updates."
+    ],
+    "model": "gemini-3-flash-preview",
+    "input_tokens": 2209,
+    "output_tokens": 1582
+  },
+  "validation": {
+    "checks": {
+      "syntax": true,
+      "structure": true,
+      "lint": true,
+      "execution": true
+    },
+    "errors": []
+  },
+  "attempts": 1,
+  "errors": []
+}

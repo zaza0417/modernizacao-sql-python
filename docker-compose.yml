@@ -10,6 +10,7 @@ services:
     volumes:
         - ./migrations:/docker-entrypoint-initdb.d:ro
         - pgdata:/var/lib/postgresql/data
+        - ./samples:/samples:ro
     healthcheck:
         test: ["CMD-SHELL", "pg_isready -U modernizer -d modernizer"]
         interval: 5s

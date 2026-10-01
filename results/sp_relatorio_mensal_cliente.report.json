@@ -1,0 +1,107 @@
+{
+  "id": "39686453-a78a-432b-9806-e99b6c66149b",
+  "status": "sucesso",
+  "dialect": "postgres",
+  "parsing": {
+    "name": "sp_relatorio_mensal_cliente",
+    "kind": "FUNCTION",
+    "language": "plpgsql",
+    "parameters": [
+      {
+        "name": "p_cliente_id",
+        "mode": "IN",
+        "type": "BIGINT"
+      },
+      {
+        "name": "p_data_inicio",
+        "mode": "IN",
+        "type": "DATE"
+      },
+      {
+        "name": "p_data_fim",
+        "mode": "IN",
+        "type": "DATE"
+      }
+    ],
+    "returns": "TABLE (mes_referencia DATE, total_creditos DECIMAL(18, 2), total_debitos DECIMAL(18, 2), saldo_consolidado DECIMAL(18, 2), qtd_transacoes INT)",
+    "variables": [
+      {
+        "name": "v_saldo_atual",
+        "type": "numeric"
+      }
+    ]
+  },
+  "analysis": {
+    "constructs": {
+      "block": 2,
+      "if": 1,
+      "raise": 3,
+      "assign": 1,
+      "return_query": 2,
+      "exception_block": 1,
+      "return": 1
+    },
+    "tables": [
+      "contas",
+      "transacoes"
+    ],
+    "function_calls": [
+      "fn_saldo_cliente"
+    ],
+    "risks": [
+      {
+        "code": "EXCEPTION_BLOCK",
+        "severity": "alta",
+        "guidance": "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e desfeito antes do handler. Escritas no handler seguidas de RAISE tambem sao desfeitas pela transacao externa. Todo RAISE EXCEPTION dentro do bloco, inclusive validacoes de parametros, e capturado pelo handler WHEN OTHERS: coloque essas validacoes dentro do try. O corpo do bloco fica dentro de um `with conn.transaction()` aninhado proprio, com o try/except por fora dele, para que o handler consiga usar a conexao depois de um erro de banco."
+      },
+      {
+        "code": "SET_RETURNING",
+        "severity": "media",
+        "guidance": "RETURN QUERY devolve varias linhas: retorne uma lista de dataclasses."
+      },
+      {
+        "code": "RECURSIVE_CTE",
+        "severity": "media",
+        "guidance": "CTE recursiva: mantenha em SQL em vez de reescrever com loop Python."
+      },
+      {
+        "code": "NESTED_CALL",
+        "severity": "media",
+        "guidance": "Chama outras funcoes do banco: fn_saldo_cliente. Trate como dependencia explicita."
+      },
+      {
+        "code": "DECIMAL",
+        "severity": "media",
+        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."
+      },
+      {
+        "code": "RAISE",
+        "severity": "media",
+        "guidance": "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."
+      }
+    ]
+  },
+  "generation": {
+    "decisions": [
+      "Uso de `with conn.transaction()` aninhado para emular o comportamento de subtransacao do bloco EXCEPTION do PL/pgSQL.",
+      "Conversao de NUMERIC para `decimal.Decimal` com `quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)` para garantir paridade com a precisao (18,2) do banco.",
+      "Manutencao da CTE recursiva em SQL puro para evitar multiplas viagens de rede e manter a performance da geracao de series temporais.",
+      "Implementacao do fallback de erro no bloco `except`, garantindo que uma linha padrao seja retornada caso qualquer erro (incluindo validacao de datas) ocorra, simulando o `WHEN OTHERS` original.",
+      "Uso de dataclasses com `frozen=True` e `slots=True` para representar o SETOF retornado, visando imutabilidade e eficiencia de memoria.",
+      "As validacoes de parametros foram colocadas dentro do escopo do try/except para que o erro dispare o fallback, assim como faria o `RAISE EXCEPTION` dentro de um bloco `BEGIN...EXCEPTION` no PostgreSQL."
+    ],
+    "model": "gemini-3-flash-preview",
+    "input_tokens": 2345,
+    "output_tokens": 2072
+  },
+  "validation": {
+    "checks": {
+      "syntax": true,
+      "structure": true,
+      "lint": true
+    },
+    "errors": []
+  },
+  "attempts": 1,
+  "errors": []
+}

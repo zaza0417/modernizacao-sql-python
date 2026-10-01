@@ -1,0 +1,63 @@
+{
+  "id": "64471c20-6ab6-4b35-9eba-7ff621b771ee",
+  "status": "sucesso",
+  "errors": [],
+  "dialect": "postgres",
+  "parsing": {
+    "kind": "FUNCTION",
+    "name": "fn_saldo_cliente",
+    "returns": "DECIMAL(18, 2)",
+    "language": "plpgsql",
+    "variables": [
+      {
+        "name": "v_total",
+        "type": "numeric"
+      }
+    ],
+    "parameters": [
+      {
+        "mode": "IN",
+        "name": "p_cliente_id",
+        "type": "BIGINT"
+      }
+    ]
+  },
+  "analysis": {
+    "risks": [
+      {
+        "code": "DECIMAL",
+        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float, com o mesmo arredondamento da escala declarada.",
+        "severity": "media"
+      }
+    ],
+    "tables": [
+      "contas"
+    ],
+    "constructs": {
+      "block": 1,
+      "return": 1,
+      "execsql": 1
+    },
+    "function_calls": []
+  },
+  "attempts": 1,
+  "generation": {
+    "model": "gemini-3.5-flash",
+    "decisions": [
+      "Mapeamento do tipo de dados NUMERIC(18,2) para decimal.Decimal com escala forcada de 2 casas decimais usando quantize e arredondamento ROUND_HALF_UP para mitigar riscos de arredondamento de float.",
+      "Uso do gerenciador de contexto conn.transaction() para controle transacional explicito, garantindo integridade e conformidade com as regras de traducao.",
+      "Parametrizacao segura da query SQL usando dicionario de parametros (%(p_cliente_id)s) para prevenir SQL Injection.",
+      "Utilizacao do tipo primitivo int para mapear o tipo BIGINT do PostgreSQL."
+    ],
+    "input_tokens": 1264,
+    "output_tokens": 437
+  },
+  "validation": {
+    "checks": {
+      "lint": true,
+      "syntax": true,
+      "structure": true
+    },
+    "errors": []
+  }
+}

@@ -21,6 +21,8 @@ Regras obrigatorias do codigo gerado:
 - Type hints em tudo e docstring na funcao principal.
 - Importe apenas o que for usado.
 - O codigo deve ser completo e executavel, sem trechos omitidos.
+- Em chamadas de logging use %s simples. O escape %% so existe dentro de
+  textos SQL parametrizados.
 
 Preserve o comportamento observavel da rotina original. Siga as orientacoes de
 risco recebidas. Em `decisions`, liste cada decisao de traducao relevante e

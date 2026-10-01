@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 from modernizer.graph.state import PipelineState
+from modernizer.validation.execution import check_execution
 
 
 def validate_node(state: PipelineState) -> dict:
@@ -19,6 +20,11 @@ def validate_node(state: PipelineState) -> dict:
         checks["structure"] = not structure
         checks["lint"] = not lint
         errors += structure + lint
+        if not structure:
+            execution = check_execution(code, state["parsed"])
+            if execution is not None:
+                checks["execution"] = not execution
+                errors += execution
 
     return {
         "validation": {"checks": checks, "errors": errors},

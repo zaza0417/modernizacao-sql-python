@@ -148,11 +148,18 @@ class PostgresDialect:
         rules = [
             (constructs["fetch"] > 0, "CURSOR_LOOP", "alta",
              "Cursor percorrido linha a linha gera N+1 queries. Prefira uma "
-             "operacao set-based ou carga em lote, preservando a semantica."),
+             "operacao set-based ou carga em lote, preservando a semantica."        
+             " Nao execute consultas dentro do laco: carregue os dados de "
+             "apoio em uma unica query antes dele."),
             (constructs["exception_block"] > 0, "EXCEPTION_BLOCK", "alta",
              "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e "
              "desfeito antes do handler. Escritas no handler seguidas de RAISE "
-             "tambem sao desfeitas pela transacao externa."),
+             "tambem sao desfeitas pela transacao externa. Todo RAISE EXCEPTION "
+             "dentro do bloco, inclusive validacoes de parametros, e capturado "
+             "pelo handler WHEN OTHERS: coloque essas validacoes dentro do try."           
+             " O corpo do bloco fica dentro de um `with conn.transaction()` "
+             "aninhado proprio, com o try/except por fora dele, para que o "
+             "handler consiga usar a conexao depois de um erro de banco."),
             ("FOR UPDATE" in sql_text, "ROW_LOCK", "alta",
              "SELECT ... FOR UPDATE bloqueia linhas. Leitura e escrita precisam "
              "ocorrer na mesma transacao e na mesma conexao."),
@@ -169,14 +176,19 @@ class PostgresDialect:
              f"Chama outras funcoes do banco: {', '.join(functions)}. Trate "
              "como dependencia explicita."),
             ("NUMERIC" in types or "DECIMAL" in types, "DECIMAL", "media",
-             "Valores NUMERIC devem usar decimal.Decimal, nunca float, com o "
-             "mesmo arredondamento da escala declarada."),
+             "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada "
+             "atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique "
+             "quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."),
             (constructs["raise"] > 0, "RAISE", "media",
              "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."),
             (constructs["getdiag"] > 0, "ROW_COUNT", "baixa",
              "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount."),
             ("JSONB" in sql_text, "JSONB", "baixa",
-             "JSONB: construa com dict Python e envie com adaptador JSON do driver."),
+             "JSONB: mantenha jsonb_build_object no SQL e passe os valores como "
+             "parametros com cast explicito em cada um (%(x)s::bigint, "
+             "::numeric, ::text, ::date), pois o banco nao infere o tipo de "
+             "parametros nessa funcao. Nao use Jsonb() com Decimal nem converta "
+             "para str ou float."),
         ]
         return [
             {"code": code, "severity": severity, "guidance": guidance}

@@ -42,8 +42,12 @@ class GeminiProvider:
                     response = self._client.models.generate_content(
                         model=model, contents=user, config=config
                     )
-                except errors.ClientError:
-                    raise
+                except errors.ClientError as exc:
+                    if exc.code != 429:
+                        raise
+                    logger.warning("modelo %s sem cota: tentando o proximo", model)
+                    last_error = exc
+                    continue
                 except Exception as exc:
                     logger.warning("modelo %s falhou: %s", model, str(exc)[:120])
                     last_error = exc

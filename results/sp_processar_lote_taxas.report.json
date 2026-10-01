@@ -1,0 +1,128 @@
+{
+  "id": "8f29be68-8fee-422e-bac7-958c0f0b782b",
+  "status": "sucesso",
+  "dialect": "postgres",
+  "parsing": {
+    "name": "sp_processar_lote_taxas",
+    "kind": "PROCEDURE",
+    "language": "plpgsql",
+    "parameters": [
+      {
+        "name": "p_data_referencia",
+        "mode": "IN",
+        "type": "DATE"
+      }
+    ],
+    "returns": null,
+    "variables": [
+      {
+        "name": "cur_transacoes",
+        "type": "refcursor"
+      },
+      {
+        "name": "v_id",
+        "type": "int8"
+      },
+      {
+        "name": "v_origem",
+        "type": "int8"
+      },
+      {
+        "name": "v_tipo",
+        "type": "varchar"
+      },
+      {
+        "name": "v_valor",
+        "type": "numeric"
+      },
+      {
+        "name": "v_taxa",
+        "type": "numeric"
+      },
+      {
+        "name": "v_percentual",
+        "type": "numeric"
+      },
+      {
+        "name": "v_minimo",
+        "type": "numeric"
+      },
+      {
+        "name": "v_total_taxas",
+        "type": "numeric"
+      },
+      {
+        "name": "v_count",
+        "type": "int4"
+      }
+    ]
+  },
+  "analysis": {
+    "constructs": {
+      "block": 1,
+      "open": 1,
+      "loop": 1,
+      "fetch": 1,
+      "exit": 2,
+      "execsql": 5,
+      "if": 2,
+      "assign": 6,
+      "case": 1,
+      "close": 1,
+      "return": 1
+    },
+    "tables": [
+      "contas",
+      "log_auditoria",
+      "taxas",
+      "transacoes"
+    ],
+    "function_calls": [],
+    "risks": [
+      {
+        "code": "CURSOR_LOOP",
+        "severity": "alta",
+        "guidance": "Cursor percorrido linha a linha gera N+1 queries. Prefira uma operacao set-based ou carga em lote, preservando a semantica. Nao execute consultas dentro do laco: carregue os dados de apoio em uma unica query antes dele."
+      },
+      {
+        "code": "MULTI_WRITE",
+        "severity": "alta",
+        "guidance": "Multiplas escritas devem ficar em uma unica transacao atomica."
+      },
+      {
+        "code": "DECIMAL",
+        "severity": "media",
+        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."
+      },
+      {
+        "code": "JSONB",
+        "severity": "baixa",
+        "guidance": "JSONB: mantenha jsonb_build_object no SQL e passe os valores como parametros com cast explicito em cada um (%(x)s::bigint, ::numeric, ::text, ::date), pois o banco nao infere o tipo de parametros nessa funcao. Nao use Jsonb() com Decimal nem converta para str ou float."
+      }
+    ]
+  },
+  "generation": {
+    "decisions": [
+      "Migracao de cursor para carregamento em lote (Pre-fetching): As taxas vigentes para a data de referencia sao carregadas em um dicionario Python no inicio da execucao, eliminando a query SELECT dentro do loop (N+1 reads).",
+      "Uso de decimal.Decimal com quantization: Para garantir paridade com o tipo NUMERIC(18,2) e NUMERIC(7,4) do PostgreSQL, aplicou-se o metodo quantize(..., ROUND_HALF_UP) em cada calculo e atribuicao intermediaria.",
+      "Preservacao do jsonb_build_object: Conforme orientacao, a construcao do JSONB foi mantida no SQL para aproveitar a performance do banco, utilizando casts explicitos (::bigint, ::numeric, etc) nos parametros para evitar erros de inferencia de tipo.",
+      "Controle Transacional: Toda a rotina foi envolta em 'with conn.transaction()', garantindo que o processamento do lote seja atomico.",
+      "Mapeamento de CASE para IF/ELIF: A estrutura CASE do PL/pgSQL foi traduzida para condicionais Python, mantendo o multiplicador de 0.90 no bloco else para tipos nao especificados (como DEPOSITO).",
+      "Escalabilidade: A busca inicial de transacoes traz todos os registros para a memoria. Para volumes massivos (milhoes de registros/dia), recomendaria-se o uso de server-side cursor com chunks, mas para um 'lote' diario padrao, a carga em memoria e mais performatica."
+    ],
+    "model": "gemini-3-flash-preview",
+    "input_tokens": 2285,
+    "output_tokens": 1982
+  },
+  "validation": {
+    "checks": {
+      "syntax": true,
+      "structure": true,
+      "lint": true,
+      "execution": true
+    },
+    "errors": []
+  },
+  "attempts": 1,
+  "errors": []
+}
