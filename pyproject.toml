@@ -7,7 +7,12 @@ authors = [
     { name = "IsacAlves", email = "isac.carmo@singletech.com.br" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "colorama>=0.4.6",
+    "fastapi>=0.142.2",
+    "langgraph>=1.2.12",
+    "langgraph-cli[inmem]>=0.4.32",
+]
 
 [project.scripts]
 modernizer = "modernizer:main"
