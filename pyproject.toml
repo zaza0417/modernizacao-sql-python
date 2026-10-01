@@ -14,6 +14,7 @@ dependencies = [
     "langgraph>=1.2.12",
     "langgraph-cli[inmem]>=0.4.32",
     "pglast>=8.4",
+    "psycopg[binary]>=3.3.6",
     "ruff>=0.16.9",
     "sqlglot>=30.21.0",
 ]

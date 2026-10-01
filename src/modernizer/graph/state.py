@@ -16,3 +16,5 @@ class PipelineState(TypedDict, total=False):
     attempts: int
     errors: list[str]
     status: str
+    report: dict[str, Any]
+    execution_id: str
