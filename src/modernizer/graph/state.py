@@ -11,6 +11,7 @@ class PipelineState(TypedDict, total=False):
     analysis: dict[str, Any]
     generated_code: str | None
     validation: dict[str, Any]
+    generation: dict[str, Any]
     # controle
     attempts: int
     errors: list[str]
