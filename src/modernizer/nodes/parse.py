@@ -1,6 +1,3 @@
-from modernizer.graph.state import PipelineState
-
-
 from modernizer.dialects import get_dialect
 from modernizer.graph.state import PipelineState
 

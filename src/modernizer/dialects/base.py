@@ -22,8 +22,20 @@ class ParsedProcedure(TypedDict):
     body_source: str           # texto do corpo, para o prompt
     body_tree: dict[str, Any]  # árvore procedural, para a análise
 
+class Risk(TypedDict):
+    code: str
+    severity: str      # "alta", "media" ou "baixa"
+    guidance: str
+
+
+class Analysis(TypedDict):
+    constructs: dict[str, int]
+    tables: list[str]
+    function_calls: list[str]
+    risks: list[Risk]
 
 class Dialect(Protocol):
     name: str
 
     def parse(self, source: str) -> ParsedProcedure: ...
+    def analyze(self, parsed: ParsedProcedure) -> Analysis: ...

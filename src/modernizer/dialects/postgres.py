@@ -1,8 +1,10 @@
+from collections import Counter
+
 import sqlglot
 from pglast import parse_plpgsql
 from sqlglot import exp
 
-from modernizer.dialects.base import Parameter, ParsedProcedure, Variable
+from modernizer.dialects.base import Parameter, ParsedProcedure, Variable, Analysis, Risk
 
 
 class PostgresDialect:
@@ -78,3 +80,106 @@ class PostgresDialect:
                 }
             )
         return variables
+
+    def analyze(self, parsed: ParsedProcedure) -> Analysis:
+        constructs: Counter[str] = Counter()
+        queries: list[str] = []
+        self._walk(parsed["body_tree"], constructs, queries)
+        tables, functions = self._references(queries)
+        return {
+            "constructs": dict(constructs),
+            "tables": tables,
+            "function_calls": functions,
+            "risks": self._risks(parsed, constructs, queries, functions),
+        }
+
+    def _walk(self, node, constructs: Counter[str], queries: list[str]) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.startswith("PLpgSQL_stmt_") or key == "PLpgSQL_exception_block":
+                    name = key.removeprefix("PLpgSQL_").removeprefix("stmt_")
+                    constructs[name] += 1
+                if key == "PLpgSQL_expr":
+                    queries.append(value["query"])
+                self._walk(value, constructs, queries)
+        elif isinstance(node, list):
+            for item in node:
+                self._walk(item, constructs, queries)
+
+    @staticmethod
+    def _references(queries: list[str]) -> tuple[list[str], list[str]]:
+        tables: set[str] = set()
+        functions: set[str] = set()
+        for query in queries:
+            expr = query.split(":=", 1)[1] if ":=" in query else query
+            for candidate in (expr, f"SELECT {expr}"):
+                try:
+                    tree = sqlglot.parse_one(candidate, read="postgres")
+                except Exception:
+                    continue
+                ctes = {c.alias for c in tree.find_all(exp.CTE)}
+                tables.update(
+                    t.name for t in tree.find_all(exp.Table)
+                    if t.name and t.name not in ctes
+                )
+                functions.update(
+                    f.name for f in tree.find_all(exp.Anonymous)
+                    if not f.name.lower().startswith(("json_", "jsonb_"))
+                )
+                break
+        return sorted(tables), sorted(functions)
+
+    @staticmethod
+    def _risks(
+        parsed: ParsedProcedure,
+        constructs: Counter[str],
+        queries: list[str],
+        functions: list[str],
+    ) -> list[Risk]:
+        sql_text = " ".join(queries).upper()
+        declared = parsed["parameters"] + parsed["variables"]
+        types = " ".join(d["type"] for d in declared).upper()
+        types += " " + (parsed["returns"] or "").upper()
+        writes = sum(
+            q.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+            for q in queries
+        )
+
+        rules = [
+            (constructs["fetch"] > 0, "CURSOR_LOOP", "alta",
+             "Cursor percorrido linha a linha gera N+1 queries. Prefira uma "
+             "operacao set-based ou carga em lote, preservando a semantica."),
+            (constructs["exception_block"] > 0, "EXCEPTION_BLOCK", "alta",
+             "Bloco EXCEPTION cria uma subtransacao: o que o bloco fez e "
+             "desfeito antes do handler. Escritas no handler seguidas de RAISE "
+             "tambem sao desfeitas pela transacao externa."),
+            ("FOR UPDATE" in sql_text, "ROW_LOCK", "alta",
+             "SELECT ... FOR UPDATE bloqueia linhas. Leitura e escrita precisam "
+             "ocorrer na mesma transacao e na mesma conexao."),
+            (writes >= 2, "MULTI_WRITE", "alta",
+             "Multiplas escritas devem ficar em uma unica transacao atomica."),
+            (any(p["mode"] != "IN" for p in parsed["parameters"]), "OUT_PARAMS", "media",
+             "Parametros OUT nao existem em Python: devolva-os no retorno "
+             "(dataclass)."),
+            (constructs["return_query"] > 0, "SET_RETURNING", "media",
+             "RETURN QUERY devolve varias linhas: retorne uma lista de dataclasses."),
+            ("WITH RECURSIVE" in sql_text, "RECURSIVE_CTE", "media",
+             "CTE recursiva: mantenha em SQL em vez de reescrever com loop Python."),
+            (bool(functions), "NESTED_CALL", "media",
+             f"Chama outras funcoes do banco: {', '.join(functions)}. Trate "
+             "como dependencia explicita."),
+            ("NUMERIC" in types or "DECIMAL" in types, "DECIMAL", "media",
+             "Valores NUMERIC devem usar decimal.Decimal, nunca float, com o "
+             "mesmo arredondamento da escala declarada."),
+            (constructs["raise"] > 0, "RAISE", "media",
+             "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."),
+            (constructs["getdiag"] > 0, "ROW_COUNT", "baixa",
+             "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount."),
+            ("JSONB" in sql_text, "JSONB", "baixa",
+             "JSONB: construa com dict Python e envie com adaptador JSON do driver."),
+        ]
+        return [
+            {"code": code, "severity": severity, "guidance": guidance}
+            for condition, code, severity, guidance in rules
+            if condition
+        ]
