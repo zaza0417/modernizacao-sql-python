@@ -10,7 +10,7 @@ from modernizer.llm.base import GenerationResult
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODELS = "gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview"
+_DEFAULT_MODELS = "gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview,gemini-3.5-flash-lite"
 _TIMEOUT_MS = 60_000
 _ROUNDS = 2
 
