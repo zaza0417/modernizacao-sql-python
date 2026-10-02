@@ -118,10 +118,10 @@ extração de código de dentro de texto livre. O preço dessa escolha apareceu 
 desenvolvimento: o nível gratuito tem cota diária por modelo, responde 503 com
 frequência e não inclui a linha Pro. Por isso o provedor aceita uma lista de
 modelos em ordem de preferência (`MODERNIZER_MODEL`), tenta o seguinte em caso de
-sobrecarga ou cota esgotada e espera entre as rodadas. Modelos menores (Flash
-Lite) geraram código com erro de sintaxe e de execução, então ficam fora da
-lista. Com orçamento, eu avaliaria um modelo mais forte para os Anexos E e F
-usando a métrica de equivalência como critério de comparação.
+sobrecarga ou cota esgotada e espera entre as rodadas. Modelos menores (Flash Lite) 
+geraram código com erro de sintaxe e de execução,
+então ficam por último na lista, como último recurso quando os demais estão
+indisponíveis.
 
 **Dialetos como plugins.** `Dialect` define `parse` e `analyze`. Suportar T-SQL ou
 PL/SQL é criar uma classe e registrá-la; os nós não mudam.
