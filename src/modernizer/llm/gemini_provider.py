@@ -4,9 +4,11 @@ import time
 
 from google import genai
 from google.genai import errors, types
+from langfuse import observe
 from pydantic import BaseModel
 
 from modernizer.llm.base import GenerationResult
+from modernizer.observability import record_generation
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class GeminiProvider:
         self.models = [m.strip() for m in raw.split(",") if m.strip()]
         self._client = genai.Client(http_options=types.HttpOptions(timeout=_TIMEOUT_MS))
 
+    @observe(name="gemini-generate", as_type="generation", capture_input=False)
     def generate(self, system: str, user: str) -> GenerationResult:
         config = types.GenerateContentConfig(
             system_instruction=system,
@@ -50,7 +53,9 @@ class GeminiProvider:
                     logger.warning("modelo %s falhou: %s", model, str(exc)[:120])
                     last_error = exc
                     continue
-                return self._to_result(response, model)
+                result = self._to_result(response, model)
+                record_generation(model, system, user, result)
+                return result
             time.sleep(2**attempt)
 
         raise RuntimeError(f"Todos os modelos falharam: {last_error}")

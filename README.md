@@ -46,12 +46,15 @@ uv sync
 uv run langgraph dev        # servidor em http://127.0.0.1:2024
 ```
 
-| Variável | Uso |
-|---|---|
-| `GEMINI_API_KEY` | Chave do Google AI Studio |
+| Variável | Uso                                                    |
+|---|--------------------------------------------------------|
+| `GEMINI_API_KEY` | Chave do Google AI Studio                              |
 | `MODERNIZER_MODEL` | Modelos em ordem de preferência, separados por vírgula |
-| `DATABASE_URL` | Banco do histórico |
-| `TEST_DATABASE_URL` | Banco de teste da validação por execução (opcional) |
+| `DATABASE_URL` | Banco do histórico                                     |
+| `TEST_DATABASE_URL` | Banco de teste da validação por execução (opcional)    |
+| `LANGFUSE_SECRET_KEY` | Chave do Langfuse                                      |
+| `LANGFUSE_PUBLIC_KEY` | Chave publica do langfuse                              |
+| `LANGFUSE_BASE_URL` | Url base do langfuse                                   |
 
 Endpoints:
 
@@ -188,6 +191,26 @@ legado comparando resultados (shadow mode), e a métrica como critério do laço
 correção, em vez de apenas relatório.
 
 
+## Observabilidade com Langfuse
+
+Cada chamada a `POST /modernize` gera um trace no Langfuse, com um span por nó do
+grafo e, dentro de `generate`, o registro da chamada ao LLM (modelo, prompt,
+resposta, tokens, custo e latência). Cada trace recebe dois scores:
+`validacao_aprovada` e `tentativas`.
+
+![Trace no Langfuse](docs/langfuse-trace.jpg)
+
+A integração usa o `CallbackHandler` do Langfuse para os nós do LangGraph e o
+decorador `@observe` para a chamada ao Gemini, que é feita pelo SDK do Google e
+não passa pelos callbacks. É opcional: sem `LANGFUSE_PUBLIC_KEY` e
+`LANGFUSE_SECRET_KEY`, a pipeline roda sem tracing.
+
+**Escolha: Langfuse Cloud.** A versão self-hosted atual exige seis serviços
+(Postgres, ClickHouse, Redis, MinIO, web e worker). Para o escopo do desafio,
+preferi a nuvem e deixei o destino configurável: apontar para uma instância
+própria é trocar `LANGFUSE_BASE_URL`.
+
+
 ## Qualidade
 
 ```bash
@@ -199,7 +222,3 @@ Os testes do grafo usam um provedor de LLM falso, com respostas combinadas, e
 substituem a gravação no banco. Isso permite testar o caminho feliz, a nova
 tentativa (conferindo que os erros voltam no prompt), a desistência após 3
 tentativas e a persistência de falhas, de forma determinística.
-
-## Com mais tempo
-
-- Observabilidade com Langfuse.

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from modernizer.evaluation.service import run_evaluation
 from modernizer.graph.builder import graph
+from modernizer.observability import new_trace_handler, score_trace
 
 app = FastAPI(title="Modernizer")
 
@@ -29,7 +30,10 @@ def health() -> dict[str, str]:
 
 @app.post("/modernize")
 def modernize(request: ModernizeRequest) -> ModernizeResponse:
-    result = graph.invoke(request.model_dump())
+    handler = new_trace_handler()
+    config = {"run_name": "modernize", "callbacks": [handler] if handler else []}
+    result = graph.invoke(request.model_dump(), config=config)
+    score_trace(handler, result)
     return ModernizeResponse(
         id=result.get("execution_id"),
         status=result["status"],

@@ -1,130 +1,140 @@
-"""Modulo para processamento de lote de taxas de transacoes bancarias."""
-import logging
+"""Modulo para processar lote de taxas de transacoes bancarias de uma data especifica."""
+
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import date
+import datetime
+import logging
 import psycopg
 
 logger = logging.getLogger(__name__)
 
-class ProcessingError(Exception):
-    """Excecao lancada durante o processamento de taxas."""
+DEC_2 = Decimal("0.01")
+DEC_4 = Decimal("0.0001")
+
+class ProcessamentoTaxasError(Exception):
+    """Excecao lancada para erros no processamento do lote de taxas."""
     pass
 
-def sp_processar_lote_taxas(conn: psycopg.Connection, p_data_referencia: date) -> None:
-    """
-    Calcula e aplica taxas para transacoes efetivadas em uma data de referencia.
-    
-    Args:
-        conn: Conexao ativa com o banco de dados PostgreSQL.
-        p_data_referencia: Data das transacoes a serem processadas.
-    """
-    D2 = Decimal("0.01")
-    D4 = Decimal("0.0001")
-    
+def sp_processar_lote_taxas(conn: psycopg.Connection, p_data_referencia: datetime.date) -> None:
+    """Processa transacoes de uma determinada data, aplicando e registrando as respectivas taxas."""
     with conn.transaction():
-        # 1. Carregamento previo das taxas vigentes para evitar N+1 queries
-        # O uso de DISTINCT ON garante que pegamos a versao mais recente (vigente_de DESC)
-        rates = {}
-        with conn.cursor() as cur_rates:
-            cur_rates.execute("""
-                SELECT tipo_operacao, percentual, valor_minimo
-                FROM (
-                    SELECT tipo_operacao, percentual, valor_minimo,
-                           ROW_NUMBER() OVER (PARTITION BY tipo_operacao ORDER BY vigente_de DESC) as rn
-                    FROM taxas
-                    WHERE vigente_de <= %(ref_date)s
-                      AND (vigente_ate IS NULL OR vigente_ate >= %(ref_date)s)
-                ) t WHERE rn = 1
-            """, {"ref_date": p_data_referencia})
-            for row in cur_rates.fetchall():
-                rates[row[0]] = {
-                    "percentual": row[1].quantize(D4, ROUND_HALF_UP),
-                    "valor_minimo": row[2].quantize(D2, ROUND_HALF_UP)
+        # 1. Busca as taxas vigentes na data para evitar buscas individuais (N+1)
+        query_taxas = """
+            SELECT DISTINCT ON (tipo_operacao) tipo_operacao, percentual, valor_minimo
+            FROM taxas
+            WHERE vigente_de <= %(data_ref)s
+              AND (vigente_ate IS NULL OR vigente_ate >= %(data_ref)s)
+            ORDER BY tipo_operacao, vigente_de DESC;
+        """
+        taxas_map = {}
+        with conn.cursor() as cur:
+            cur.execute(query_taxas, {"data_ref": p_data_referencia})
+            for row in cur.fetchall():
+                tipo, perc, min_val = row
+                taxas_map[tipo] = {
+                    "percentual": Decimal(perc).quantize(DEC_4, rounding=ROUND_HALF_UP) if perc is not None else None,
+                    "valor_minimo": Decimal(min_val).quantize(DEC_2, rounding=ROUND_HALF_UP) if min_val is not None else None
                 }
 
-        # 2. Busca das transacoes do lote
-        with conn.cursor() as cur_trans:
-            cur_trans.execute("""
-                SELECT id, conta_origem_id, tipo, valor
-                FROM transacoes
-                WHERE DATE(data_transacao) = %(ref_date)s
-                  AND status = 'EFETIVADA'
-                  AND tipo <> 'TARIFA'
-            """, {"ref_date": p_data_referencia})
-            transactions = cur_trans.fetchall()
-
-        v_total_taxas = Decimal("0.00").quantize(D2, ROUND_HALF_UP)
+        # 2. Busca as transacoes elegiveis
+        query_transacoes = """
+            SELECT id, conta_origem_id, tipo, valor
+            FROM transacoes
+            WHERE DATE(data_transacao) = %(data_ref)s
+              AND status = 'EFETIVADA'
+              AND tipo <> 'TARIFA';
+        """
+        
+        v_total_taxas = Decimal("0.00").quantize(DEC_2, rounding=ROUND_HALF_UP)
         v_count = 0
 
-        # 3. Processamento iterativo
-        for v_id, v_origem, v_tipo, v_valor in transactions:
-            rate_info = rates.get(v_tipo)
-            if rate_info is None:
-                continue
-            
-            v_percentual = rate_info["percentual"]
-            v_minimo = rate_info["valor_minimo"]
-            v_valor_dec = v_valor.quantize(D2, ROUND_HALF_UP)
+        with conn.cursor() as cur:
+            cur.execute(query_transacoes, {"data_ref": p_data_referencia})
+            transacoes = cur.fetchall()
 
-            # Calculo base: GREATEST(v_valor * v_percentual / 100.0, v_minimo)
-            calc_tax = (v_valor_dec * v_percentual / Decimal("100.0")).quantize(D2, ROUND_HALF_UP)
-            v_taxa = max(calc_tax, v_minimo)
+            for v_id, v_origem, v_tipo, v_valor_raw in transacoes:
+                v_valor = Decimal(v_valor_raw).quantize(DEC_2, rounding=ROUND_HALF_UP)
+                taxa_info = taxas_map.get(v_tipo)
+                
+                if not taxa_info or taxa_info["percentual"] is None:
+                    continue
 
-            # Ajuste por tipo (CASE original)
-            if v_tipo == 'TRANSFERENCIA':
-                v_taxa = v_taxa
-            elif v_tipo == 'SAQUE':
-                v_taxa = (v_taxa * Decimal("1.10")).quantize(D2, ROUND_HALF_UP)
-            else:
-                v_taxa = (v_taxa * Decimal("0.90")).quantize(D2, ROUND_HALF_UP)
+                v_percentual = taxa_info["percentual"]
+                v_minimo = taxa_info["valor_minimo"]
 
-            if v_origem is not None:
-                with conn.cursor() as write_cur:
-                    # Debito na conta origem
-                    write_cur.execute(
-                        "UPDATE contas SET saldo = saldo - %(taxa)s WHERE id = %(origem)s",
-                        {"taxa": v_taxa, "origem": v_origem}
+                # Calcula a taxa base: GREATEST(v_valor * v_percentual / 100.0, v_minimo)
+                calc_val = (v_valor * v_percentual / Decimal("100.0")).quantize(DEC_2, rounding=ROUND_HALF_UP)
+                v_taxa = max(calc_val, v_minimo)
+
+                # Aplica as multiplicacoes do CASE
+                if v_tipo == "TRANSFERENCIA":
+                    v_taxa = v_taxa
+                elif v_tipo == "SAQUE":
+                    v_taxa = (v_taxa * Decimal("1.10")).quantize(DEC_2, rounding=ROUND_HALF_UP)
+                else:
+                    v_taxa = (v_taxa * Decimal("0.90")).quantize(DEC_2, rounding=ROUND_HALF_UP)
+
+                if v_origem is not None:
+                    # Reduz o saldo da conta de origem
+                    cur.execute(
+                        "UPDATE contas SET saldo = saldo - %(taxa)s WHERE id = %(id)s",
+                        {"taxa": v_taxa, "id": v_origem}
                     )
-                    # Registro da nova transacao de tarifa
-                    write_cur.execute("""
+
+                    # Registra a nova transacao de TARIFA
+                    cur.execute(
+                        """
                         INSERT INTO transacoes (conta_origem_id, tipo, valor, status)
                         VALUES (%(origem)s, 'TARIFA', %(taxa)s, 'EFETIVADA')
-                    """, {"origem": v_origem, "taxa": v_taxa})
-                    # Log de auditoria individual com JSONB
-                    write_cur.execute("""
+                        """,
+                        {"origem": v_origem, "taxa": v_taxa}
+                    )
+
+                    # Registra a auditoria da transacao processada
+                    cur.execute(
+                        """
                         INSERT INTO log_auditoria (entidade, entidade_id, acao, detalhes)
                         VALUES (
-                            'transacoes', %(tid)s::bigint, 'TARIFA_APLICADA',
+                            'transacoes',
+                            %(v_id)s::bigint,
+                            'TARIFA_APLICADA',
                             jsonb_build_object(
-                                'transacao_origem', %(tid)s::bigint,
-                                'tipo_origem', %(tipo)s::text,
-                                'valor_origem', %(valor)s::numeric,
-                                'percentual', %(perc)s::numeric,
-                                'taxa_aplicada', %(taxa)s::numeric
+                                'transacao_origem', %(v_id)s::bigint,
+                                'tipo_origem', %(v_tipo)s::text,
+                                'valor_origem', %(v_valor)s::numeric,
+                                'percentual', %(v_percentual)s::numeric,
+                                'taxa_aplicada', %(v_taxa)s::numeric
                             )
                         )
-                    """, {
-                        "tid": v_id, "tipo": v_tipo, "valor": v_valor_dec,
-                        "perc": v_percentual, "taxa": v_taxa
-                    })
-                
-                v_total_taxas = (v_total_taxas + v_taxa).quantize(D2, ROUND_HALF_UP)
-                v_count += 1
+                        """,
+                        {
+                            "v_id": v_id,
+                            "v_tipo": v_tipo,
+                            "v_valor": v_valor,
+                            "v_percentual": v_percentual,
+                            "v_taxa": v_taxa
+                        }
+                    )
 
-        # 4. Log final do lote
-        with conn.cursor() as summary_cur:
-            summary_cur.execute("""
+                    v_total_taxas = (v_total_taxas + v_taxa).quantize(DEC_2, rounding=ROUND_HALF_UP)
+                    v_count += 1
+
+            # Log final de encerramento do lote
+            cur.execute(
+                """
                 INSERT INTO log_auditoria (entidade, acao, detalhes)
                 VALUES (
-                    'lote_taxas', 'LOTE_PROCESSADO',
+                    'lote_taxas',
+                    'LOTE_PROCESSADO',
                     jsonb_build_object(
-                        'data_referencia', %(ref_date)s::date,
-                        'transacoes', %(count)s::integer,
-                        'total_taxas', %(total)s::numeric
+                        'data_referencia', %(p_data_referencia)s::date,
+                        'transacoes', %(v_count)s::integer,
+                        'total_taxas', %(v_total_taxas)s::numeric
                     )
                 )
-            """, {
-                "ref_date": p_data_referencia,
-                "count": v_count,
-                "total": v_total_taxas
-            })
+                """,
+                {
+                    "p_data_referencia": p_data_referencia,
+                    "v_count": v_count,
+                    "v_total_taxas": v_total_taxas
+                }
+            )
