@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from modernizer.evaluation.service import run_evaluation
 from modernizer.graph.builder import graph
 
 app = FastAPI(title="Modernizer")
@@ -35,3 +36,9 @@ def modernize(request: ModernizeRequest) -> ModernizeResponse:
         generated_code=result.get("generated_code"),
         report=result["report"],
     )
+
+
+@app.post("/evaluate")
+def evaluate() -> dict[str, Any]:
+    """Roda a metrica de equivalencia sobre a ultima geracao de cada rotina."""
+    return run_evaluation()

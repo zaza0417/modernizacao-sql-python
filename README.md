@@ -156,6 +156,37 @@ com fuso e índice para consultas das execuções recentes.
 - Apenas PL/pgSQL está implementado.
 - No Windows, o servidor do LangGraph precisa do pacote `colorama` (já incluído).
 
+## Métrica de avaliação: equivalência comportamental
+
+Para cada cenário (rotina + argumentos), a procedure original e o Python gerado
+são executados sobre os mesmos dados de teste, cada um em uma transação desfeita.
+O cenário é equivalente quando o retorno (ou a mensagem de erro) e o estado final
+de `contas`, `transacoes` e `log_auditoria` são iguais.
+
+```bash
+curl -X POST http://127.0.0.1:2024/evaluate
+```
+
+Os resultados ficam na tabela `evaluation_results`, ligados à execução avaliada.
+
+**Resultado atual: 15 de 16 cenários (93,75%).** O cenário divergente é a
+transferência para conta inexistente: o original falha por chave estrangeira e a
+tradução falha antes, na validação de status. O estado do banco é igual.
+
+**O que captura:** diferenças de retorno, de efeitos no banco e de mensagens de
+erro. Nas versões anteriores do código gerado, apontou valor gravado como texto no
+JSONB, erro propagado onde o original devolvia fallback, e arredondamento em um
+passo em vez de dois.
+
+**O que deixa de fora:** só enxerga o que os cenários exercitam. O caso do
+arredondamento só passou a ser detectado depois que incluí um valor de borda nos
+dados de teste. Também não mede desempenho nem concorrência (`FOR UPDATE`).
+
+**Evolução em produção:** cenários gerados a partir de dados reais anonimizados,
+testes baseados em propriedades para gerar entradas, execução em paralelo com o
+legado comparando resultados (shadow mode), e a métrica como critério do laço de
+correção, em vez de apenas relatório.
+
 
 ## Qualidade
 
@@ -171,6 +202,4 @@ tentativas e a persistência de falhas, de forma determinística.
 
 ## Com mais tempo
 
-- Métrica automática de equivalência: executar original e gerado com os mesmos
-  dados e comparar o estado do banco e o retorno.
 - Observabilidade com Langfuse.
