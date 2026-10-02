@@ -106,9 +106,22 @@ dentro do laço). A validação passou a executar a função contra um banco de 
 com argumentos derivados dos tipos dos parâmetros, em transação sempre desfeita. O
 erro de execução volta para o LLM na tentativa seguinte.
 
-**Provedor de LLM atrás de uma interface.** O nó conhece apenas `LLMProvider`. A
-implementação atual usa Gemini com saída estruturada (JSON com `code` e `decisions`),
-lista de modelos reserva e espera crescente entre rodadas.
+**Provedor de LLM atrás de uma interface.** O nó conhece apenas `LLMProvider`
+(`llm/base.py`). Trocar de modelo ou de fornecedor é escrever uma classe com o
+método `generate` e registrá-la; grafo, prompt e validação não mudam. Os testes
+usam essa mesma interface para substituir o LLM por um objeto com respostas fixas.
+
+**Gemini (linha Flash) como modelo.** O critério foi custo: a API do Gemini tem
+nível gratuito, o que permite a qualquer pessoa reproduzir o projeto sem cartão.
+Uso a saída estruturada da API (JSON com `code` e `decisions`), que elimina a
+extração de código de dentro de texto livre. O preço dessa escolha apareceu no
+desenvolvimento: o nível gratuito tem cota diária por modelo, responde 503 com
+frequência e não inclui a linha Pro. Por isso o provedor aceita uma lista de
+modelos em ordem de preferência (`MODERNIZER_MODEL`), tenta o seguinte em caso de
+sobrecarga ou cota esgotada e espera entre as rodadas. Modelos menores (Flash
+Lite) geraram código com erro de sintaxe e de execução, então ficam fora da
+lista. Com orçamento, eu avaliaria um modelo mais forte para os Anexos E e F
+usando a métrica de equivalência como critério de comparação.
 
 **Dialetos como plugins.** `Dialect` define `parse` e `analyze`. Suportar T-SQL ou
 PL/SQL é criar uma classe e registrá-la; os nós não mudam.
@@ -116,6 +129,18 @@ PL/SQL é criar uma classe e registrá-la; os nós não mudam.
 **Banco.** `id` UUID (não expõe volume nem é adivinhável), `generated_code` anulável
 (falhas também são gravadas), `report` em JSONB, `status` com `CHECK`, `created_at`
 com fuso e índice para consultas das execuções recentes.
+
+**Outras escolhas.**
+- `uv` para dependências: instalação rápida e `uv.lock` versionado, para builds
+  reproduzíveis.
+- `psycopg[binary]`: traz a `libpq` embutida, sem exigir o cliente do Postgres
+  instalado na máquina.
+- `ruff` como dependência de execução, e não só de desenvolvimento: a pipeline o
+  usa para validar o código gerado.
+- `langchain` entra apenas porque a integração do Langfuse com o LangGraph o
+  exige; o projeto não usa suas abstrações de LLM.
+- Banco de teste (`legacy`) separado do banco de histórico: a validação executa
+  código gerado, e não deve ter acesso aos dados da aplicação.
 
 ## Pontos de tradução observados
 
@@ -170,6 +195,9 @@ de `contas`, `transacoes` e `log_auditoria` são iguais.
 curl -X POST http://127.0.0.1:2024/evaluate
 ```
 
+A métrica avalia a geração bem-sucedida mais recente de cada rotina que estiver no
+histórico. Em um banco novo, rode antes `uv run python scripts/run_samples.py`.
+
 Os resultados ficam na tabela `evaluation_results`, ligados à execução avaliada.
 
 **Resultado atual: 15 de 16 cenários (93,75%).** O cenário divergente é a
@@ -210,11 +238,15 @@ não passa pelos callbacks. É opcional: sem `LANGFUSE_PUBLIC_KEY` e
 preferi a nuvem e deixei o destino configurável: apontar para uma instância
 própria é trocar `LANGFUSE_BASE_URL`.
 
+O custo dessa escolha é que os traces saem da máquina: prompts e código das
+procedures são enviados a um serviço externo. Para código de cliente real, o
+self-hosted seria obrigatório.
+
 
 ## Qualidade
 
 ```bash
-uv run pytest          # 29 testes, sem chave de LLM nem banco
+uv run pytest          # 38 testes (36 sem o banco de teste; 2 exigem TEST_DATABASE_URL)
 uv run ruff check .    # lint
 ```
 

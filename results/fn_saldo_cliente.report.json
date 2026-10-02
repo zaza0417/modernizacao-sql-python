@@ -1,63 +1,65 @@
 {
-  "id": "64471c20-6ab6-4b35-9eba-7ff621b771ee",
+  "id": "84f2e2f7-2124-48e7-9d56-2d7a719264d6",
   "status": "sucesso",
-  "errors": [],
   "dialect": "postgres",
   "parsing": {
-    "kind": "FUNCTION",
     "name": "fn_saldo_cliente",
-    "returns": "DECIMAL(18, 2)",
+    "kind": "FUNCTION",
     "language": "plpgsql",
+    "parameters": [
+      {
+        "name": "p_cliente_id",
+        "mode": "IN",
+        "type": "BIGINT"
+      }
+    ],
+    "returns": "DECIMAL(18, 2)",
     "variables": [
       {
         "name": "v_total",
         "type": "numeric"
       }
-    ],
-    "parameters": [
-      {
-        "mode": "IN",
-        "name": "p_cliente_id",
-        "type": "BIGINT"
-      }
     ]
   },
   "analysis": {
-    "risks": [
-      {
-        "code": "DECIMAL",
-        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float, com o mesmo arredondamento da escala declarada.",
-        "severity": "media"
-      }
-    ],
+    "constructs": {
+      "block": 1,
+      "execsql": 1,
+      "return": 1
+    },
     "tables": [
       "contas"
     ],
-    "constructs": {
-      "block": 1,
-      "return": 1,
-      "execsql": 1
-    },
-    "function_calls": []
+    "function_calls": [],
+    "risks": [
+      {
+        "code": "DECIMAL",
+        "severity": "media",
+        "guidance": "Valores NUMERIC devem usar decimal.Decimal, nunca float. Cada atribuicao a uma variavel NUMERIC(p,s) arredonda na hora: aplique quantize com ROUND_HALF_UP a cada atribuicao, nao apenas no final."
+      }
+    ]
   },
-  "attempts": 1,
   "generation": {
-    "model": "gemini-3.5-flash",
     "decisions": [
-      "Mapeamento do tipo de dados NUMERIC(18,2) para decimal.Decimal com escala forcada de 2 casas decimais usando quantize e arredondamento ROUND_HALF_UP para mitigar riscos de arredondamento de float.",
-      "Uso do gerenciador de contexto conn.transaction() para controle transacional explicito, garantindo integridade e conformidade com as regras de traducao.",
-      "Parametrizacao segura da query SQL usando dicionario de parametros (%(p_cliente_id)s) para prevenir SQL Injection.",
-      "Utilizacao do tipo primitivo int para mapear o tipo BIGINT do PostgreSQL."
+      "A variável local v_total (NUMERIC(18,2)) é emulada via Decimal.quantize com ROUND_HALF_UP para garantir a mesma precisão e comportamento de arredondamento do PL/pgSQL.",
+      "Uso de with conn.transaction() para manter consistência transacional mesmo em operações de leitura, seguindo o padrão da rotina original.",
+      "Mapeamento do tipo BIGINT para int e NUMERIC para decimal.Decimal conforme as regras de negócio bancárias.",
+      "Tratamento de COALESCE no SQL mantido para garantir retorno numérico (0) mesmo se o conjunto de resultados do SUM for nulo.",
+      "Remoção do import redundante 'import decimal' para cumprir as restrições de lint."
     ],
-    "input_tokens": 1264,
-    "output_tokens": 437
+    "model": "gemini-3-flash-preview",
+    "input_tokens": 1737,
+    "output_tokens": 530
   },
   "validation": {
     "checks": {
-      "lint": true,
       "syntax": true,
-      "structure": true
+      "structure": true,
+      "lint": true,
+      "execution": true
     },
     "errors": []
-  }
+  },
+  "attempts": 2,
+  "errors": []
 }

@@ -1,5 +1,5 @@
 {
-  "id": "39686453-a78a-432b-9806-e99b6c66149b",
+  "id": "73659317-a1bf-4a3b-8a1b-ee1f73fb8eff",
   "status": "sucesso",
   "dialect": "postgres",
   "parsing": {
@@ -83,22 +83,23 @@
   },
   "generation": {
     "decisions": [
-      "Uso de `with conn.transaction()` aninhado para emular o comportamento de subtransacao do bloco EXCEPTION do PL/pgSQL.",
-      "Conversao de NUMERIC para `decimal.Decimal` com `quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)` para garantir paridade com a precisao (18,2) do banco.",
-      "Manutencao da CTE recursiva em SQL puro para evitar multiplas viagens de rede e manter a performance da geracao de series temporais.",
-      "Implementacao do fallback de erro no bloco `except`, garantindo que uma linha padrao seja retornada caso qualquer erro (incluindo validacao de datas) ocorra, simulando o `WHEN OTHERS` original.",
-      "Uso de dataclasses com `frozen=True` e `slots=True` para representar o SETOF retornado, visando imutabilidade e eficiencia de memoria.",
-      "As validacoes de parametros foram colocadas dentro do escopo do try/except para que o erro dispare o fallback, assim como faria o `RAISE EXCEPTION` dentro de um bloco `BEGIN...EXCEPTION` no PostgreSQL."
+      "Criacao da classe de excecao RelatorioMensalClienteError para mapear a validacao de datas.",
+      "Mapeamento do tipo de retorno complexo TABLE para uma lista de dataclasses RelatorioMensalClienteRow imutaveis (frozen=True).",
+      "Inclusao da validacao de parametros de data dentro do bloco de subtransacao explicita (com conn.transaction()) para respeitar a captura pelo tratador de erro (WHEN OTHERS).",
+      "Preservacao da CTE recursiva diretamente no SQL executado pelo psycopg para manter desempenho no gerenciamento das datas de referencia de cada mes.",
+      "Arredondamento e definicao de escala (18, 2) explicita em cada conversao Decimal utilizando quantize com ROUND_HALF_UP.",
+      "Substituicao de chamadas RAISE NOTICE e RAISE WARNING por chamadas equivalentes no modulo de logging do Python."
     ],
-    "model": "gemini-3-flash-preview",
+    "model": "gemini-3.5-flash",
     "input_tokens": 2345,
-    "output_tokens": 2072
+    "output_tokens": 1747
   },
   "validation": {
     "checks": {
       "syntax": true,
       "structure": true,
-      "lint": true
+      "lint": true,
+      "execution": true
     },
     "errors": []
   },

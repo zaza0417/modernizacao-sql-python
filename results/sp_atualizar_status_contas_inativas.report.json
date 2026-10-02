@@ -1,90 +1,90 @@
 {
-  "id": "9925c4d3-8d23-4be8-b232-ffd0f1336a51",
+  "id": "e2fbd965-a043-48d1-baf9-ef6647d3b27c",
   "status": "sucesso",
-  "errors": [],
   "dialect": "postgres",
   "parsing": {
-    "kind": "PROCEDURE",
     "name": "sp_atualizar_status_contas_inativas",
-    "returns": null,
+    "kind": "PROCEDURE",
     "language": "plpgsql",
-    "variables": [],
     "parameters": [
       {
-        "mode": "IN",
         "name": "p_dias",
+        "mode": "IN",
         "type": "INT"
       },
       {
-        "mode": "OUT",
         "name": "p_afetadas",
+        "mode": "OUT",
         "type": "INT"
-      }
-    ]
-  },
-  "analysis": {
-    "risks": [
-      {
-        "code": "MULTI_WRITE",
-        "guidance": "Multiplas escritas devem ficar em uma unica transacao atomica.",
-        "severity": "alta"
-      },
-      {
-        "code": "OUT_PARAMS",
-        "guidance": "Parametros OUT nao existem em Python: devolva-os no retorno (dataclass).",
-        "severity": "media"
-      },
-      {
-        "code": "RAISE",
-        "guidance": "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging.",
-        "severity": "media"
-      },
-      {
-        "code": "ROW_COUNT",
-        "guidance": "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount.",
-        "severity": "baixa"
-      },
-      {
-        "code": "JSONB",
-        "guidance": "JSONB: construa com dict Python e envie com adaptador JSON do driver.",
-        "severity": "baixa"
       }
     ],
+    "returns": null,
+    "variables": []
+  },
+  "analysis": {
+    "constructs": {
+      "block": 1,
+      "if": 1,
+      "raise": 1,
+      "execsql": 2,
+      "getdiag": 1,
+      "return": 1
+    },
     "tables": [
       "contas",
       "log_auditoria",
       "transacoes"
     ],
-    "constructs": {
-      "if": 1,
-      "block": 1,
-      "raise": 1,
-      "return": 1,
-      "execsql": 2,
-      "getdiag": 1
-    },
-    "function_calls": []
+    "function_calls": [],
+    "risks": [
+      {
+        "code": "MULTI_WRITE",
+        "severity": "alta",
+        "guidance": "Multiplas escritas devem ficar em uma unica transacao atomica."
+      },
+      {
+        "code": "OUT_PARAMS",
+        "severity": "media",
+        "guidance": "Parametros OUT nao existem em Python: devolva-os no retorno (dataclass)."
+      },
+      {
+        "code": "RAISE",
+        "severity": "media",
+        "guidance": "RAISE EXCEPTION vira excecao Python; NOTICE e WARNING viram logging."
+      },
+      {
+        "code": "ROW_COUNT",
+        "severity": "baixa",
+        "guidance": "GET DIAGNOSTICS ROW_COUNT equivale a cursor.rowcount."
+      },
+      {
+        "code": "JSONB",
+        "severity": "baixa",
+        "guidance": "JSONB: mantenha jsonb_build_object no SQL e passe os valores como parametros com cast explicito em cada um (%(x)s::bigint, ::numeric, ::text, ::date), pois o banco nao infere o tipo de parametros nessa funcao. Nao use Jsonb() com Decimal nem converta para str ou float."
+      }
+    ]
   },
-  "attempts": 1,
   "generation": {
-    "model": "gemini-3-flash-preview",
     "decisions": [
-      "Transacao: O uso de with conn.transaction() garante a atomicidade entre o UPDATE e o INSERT no log de auditoria (risco MULTI_WRITE).",
-      "Diagnosticos: GET DIAGNOSTICS p_afetadas = ROW_COUNT foi traduzido para cur.rowcount imediatamente apos a execucao do comando UPDATE.",
-      "Excecoes: O RAISE EXCEPTION foi convertido para uma classe de excecao customizada SpError.",
-      "Parametros OUT: Como Python nao suporta parametros de saida nativamente, foi utilizada uma dataclass (SpAtualizarStatusContasInativasResult) para o retorno.",
-      "JSONB: O dicionario Python foi encapsulado em psycopg.types.json.Jsonb para garantir a correta serializacao no campo detalhes da tabela log_auditoria.",
-      "Intervalo: A construcao de intervalo do PostgreSQL foi mantida via parametrizacao segura para respeitar a logica original de calculo de data (NOW() - INTERVAL)."
+      "Uso de dataclass frozen=True e slots=True para o parametro OUT p_afetadas.",
+      "Criacao da excecao customizada ContaInativaError mapeando o RAISE EXCEPTION do PL/pgSQL.",
+      "Uso de transacao explicita com with conn.transaction() para garantir atomicidade entre o UPDATE e o INSERT.",
+      "Utilizacao de cast explicito nos parametros dentro da funcao jsonb_build_object conforme instrucao.",
+      "Uso de cursor.rowcount para capturar a quantidade de linhas afetadas pelo UPDATE."
     ],
-    "input_tokens": 1571,
-    "output_tokens": 955
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1656,
+    "output_tokens": 719
   },
   "validation": {
     "checks": {
-      "lint": true,
       "syntax": true,
-      "structure": true
+      "structure": true,
+      "lint": true,
+      "execution": true
     },
     "errors": []
-  }
+  },
+  "attempts": 1,
+  "errors": []
 }

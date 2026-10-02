@@ -1,29 +1,36 @@
-"""Module for calculating consolidated balance of active accounts for a given client."""
-
+"""Módulo contendo a função para consolidar saldo de contas de um cliente."""
 from decimal import Decimal, ROUND_HALF_UP
 import psycopg
 
 def fn_saldo_cliente(conn: psycopg.Connection, p_cliente_id: int) -> Decimal:
-    """Calculates the total consolidated balance of all active accounts of a client.
+    """
+    Retorna o saldo total consolidado de todas as contas ativas de um cliente.
 
     Args:
-        conn: Connection to the PostgreSQL database.
-        p_cliente_id: The ID of the client.
+        conn: Conexão ativa com o banco de dados PostgreSQL.
+        p_cliente_id: Identificador único do cliente.
 
     Returns:
-        The consolidated sum of balances as a Decimal with scale 2.
+        Decimal: O saldo consolidado arredondado para duas casas decimais.
     """
+    target_scale = Decimal("0.00")
+    
     with conn.transaction():
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT COALESCE(SUM(saldo), 0)
                 FROM contas
-                WHERE cliente_id = %(p_cliente_id)s
+                WHERE cliente_id = %(cliente_id)s
                   AND status = 'ATIVA';
                 """,
-                {"p_cliente_id": p_cliente_id}
+                {"cliente_id": p_cliente_id}
             )
+            
             row = cur.fetchone()
-            total = row[0] if row and row[0] is not None else Decimal("0.00")
-            return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            raw_value = row[0] if row is not None else Decimal("0")
+            
+            # Atribuição v_total NUMERIC(18,2) no PL/pgSQL exige o arredondamento imediato
+            v_total = Decimal(raw_value).quantize(target_scale, rounding=ROUND_HALF_UP)
+            
+            return v_total
